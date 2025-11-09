@@ -3,7 +3,7 @@ import random
 import time
 from typing import Dict, Any
 
-def analyze_genetic_data(data: Dict[str, Any]) -> Dict[str, Any]:
+def analyze_genetic_data(data: Dict[str, Any], shared_results: Dict) -> Dict[str, Any]:
     
     sample_id = data['sample_id']
     sequence = data['payload']['sequence']
@@ -12,7 +12,7 @@ def analyze_genetic_data(data: Dict[str, Any]) -> Dict[str, Any]:
     
     time.sleep(1.0) 
     
-    resultado = {
+    result = {
         'sample_id': sample_id,
         'genetic_analysis': {
             'length': len(sequence),
@@ -20,9 +20,12 @@ def analyze_genetic_data(data: Dict[str, Any]) -> Dict[str, Any]:
         }
     }
     print(f"Analisis de {sample_id} finalizado")
-    return resultado
+    
+    shared_results[sample_id] = result
+    
+    return result
 
-async def save_io_data(data: Dict[str, Any]) -> Dict[str, Any]:
+async def save_io_data(data: Dict[str, Any], shared_results: Dict) -> Dict[str, Any]:
 
     sample_id = data['sample_id']
     data_type = data['type']
@@ -31,9 +34,12 @@ async def save_io_data(data: Dict[str, Any]) -> Dict[str, Any]:
     
     await asyncio.sleep(0.2)
     
-    resultado = {
+    result = {
         'sample_id': sample_id,
         'status_save': 'OK'
     }
+    
+    shared_results[sample_id] = result
+    
     print(f"Guardado de {sample_id} completado")
-    return resultado
+    return result
