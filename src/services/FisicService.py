@@ -10,7 +10,6 @@ class FisicoService(BaseDataService):
         super().__init__(normalize_physical_data)
 
     async def fetch_data(self) -> Optional[Dict[str, Any]]:
-        """Simula la llegada de un dato físico crudo."""
         await asyncio.sleep(random.uniform(0.1, 0.4))
         
         raw_data = random.choice([
