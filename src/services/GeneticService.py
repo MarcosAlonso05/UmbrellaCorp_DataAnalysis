@@ -20,7 +20,7 @@ class GeneticService(BaseDataService):
         if random.random() < 0.1:
             raw_data = {'id': 'error', 'data': 'faltan campos'}
 
-        print(f"GeneticService --> Dato crudo recibido: {raw_data}")
+        #print(f"GeneticService --> Dato crudo recibido: {raw_data}")
         
         normalized_data = self.normalizer(raw_data)
         

@@ -21,7 +21,7 @@ class BioquimicService(BaseDataService):
         if random.random() < 0.05:
             raw_data = {'otro_formato': 'dato_inutil'}
 
-        print(f"BioquimicService --> Dato crudo recibido: {raw_data}")
+        #print(f"BioquimicService --> Dato crudo recibido: {raw_data}")
         normalized_data = self.normalizer(raw_data)
         
         return normalized_data

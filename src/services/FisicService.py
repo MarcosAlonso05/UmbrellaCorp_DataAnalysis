@@ -19,7 +19,7 @@ class FisicService(BaseDataService):
             "PX,temp,37.A"
         ])
         
-        print(f"FisicService --> Dato crudo recibido: {raw_data}")
+        #print(f"FisicService --> Dato crudo recibido: {raw_data}")
         normalized_data = self.normalizer(raw_data)
         
         return normalized_data
