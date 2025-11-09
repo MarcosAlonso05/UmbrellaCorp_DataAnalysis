@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 from .base_service import BaseDataService
 from processing.normalizer import normalize_biochemical_data
 
-class BioquimicoService(BaseDataService):
+class BioquimicService(BaseDataService):
     
     def __init__(self):
         super().__init__(normalize_biochemical_data)
@@ -21,7 +21,7 @@ class BioquimicoService(BaseDataService):
         if random.random() < 0.05:
             raw_data = {'otro_formato': 'dato_inutil'}
 
-        print(f"[BioquimicoService] Dato crudo recibido: {raw_data}")
+        print(f"BioquimicService --> Dato crudo recibido: {raw_data}")
         normalized_data = self.normalizer(raw_data)
         
         return normalized_data

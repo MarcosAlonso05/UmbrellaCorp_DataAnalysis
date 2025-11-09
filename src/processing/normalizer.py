@@ -10,19 +10,19 @@ def validate_data(data: Dict[str, Any], required_fields: list) -> bool:
     return all(field in data for field in required_fields)
 
 def normalize_genetic_data(raw_data: Any) -> Optional[Dict[str, Any]]:
-    required = ['id_muestra', 'seq']
+    required = ['sample_id', 'seq']
     if not validate_data(raw_data, required):
         print(f"[WARN] Dato genético inválido descartado: {raw_data}")
         return None
         
     return {
-        'id_muestra': str(raw_data['id_muestra']),
-        'tipo': 'GENETICO',
+        'sample_id': str(raw_data['sample_id']),
+        'type': 'GENETIC',
         'timestamp': get_timestamp(),
         'payload': {
-            'secuencia': str(raw_data['seq']).upper()
+            'sequence': str(raw_data['seq']).upper()
         },
-        'metadata': {'origen': 'GeneticoService'}
+        'metadata': {'origin': 'GeneticService'}
     }
 
 def normalize_biochemical_data(raw_data: Any) -> Optional[Dict[str, Any]]:
@@ -32,14 +32,14 @@ def normalize_biochemical_data(raw_data: Any) -> Optional[Dict[str, Any]]:
         return None
 
     return {
-        'id_muestra': f"B-{raw_data['sample_id']}",
-        'tipo': 'BIOQUIMICO',
+        'sample_id': f"B-{raw_data['sample_id']}",
+        'type': 'BIOQUIMIC',
         'timestamp': get_timestamp(),
         'payload': {
-            'compuesto': str(raw_data['comp']),
-            'valor': float(raw_data['val'])
+            'compound': str(raw_data['comp']),
+            'value': float(raw_data['val'])
         },
-        'metadata': {'origen': 'BioquimicoService'}
+        'metadata': {'origin': 'BioquimicService'}
     }
 
 def normalize_physical_data(raw_data: Any) -> Optional[Dict[str, Any]]:
@@ -54,14 +54,14 @@ def normalize_physical_data(raw_data: Any) -> Optional[Dict[str, Any]]:
 
     try:
         return {
-            'id_muestra': str(parts[0]),
-            'tipo': 'FISICO',
+            'sample_id': str(parts[0]),
+            'type': 'FISIC',
             'timestamp': get_timestamp(),
             'payload': {
-                'metrica': str(parts[1]),
-                'valor': float(parts[2])
+                'metrics': str(parts[1]),
+                'value': float(parts[2])
             },
-            'metadata': {'origen': 'FisicoService'}
+            'metadata': {'origin': 'FisicService'}
         }
     except ValueError:
         print(f"[WARN] Dato físico inválido (valor no numérico): {raw_data}")

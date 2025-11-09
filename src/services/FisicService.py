@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 from .base_service import BaseDataService
 from processing.normalizer import normalize_physical_data
 
-class FisicoService(BaseDataService):
+class FisicService(BaseDataService):
     
     def __init__(self):
         super().__init__(normalize_physical_data)
@@ -19,7 +19,7 @@ class FisicoService(BaseDataService):
             "PX,temp,37.A"
         ])
         
-        print(f"[FisicoService] Dato crudo recibido: {raw_data}")
+        print(f"FisicService --> Dato crudo recibido: {raw_data}")
         normalized_data = self.normalizer(raw_data)
         
         return normalized_data
