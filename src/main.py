@@ -142,8 +142,10 @@ async def main():
     queue = asyncio.Queue(maxsize=MAX_QUEUE_SIZE)
     
     cpu_worker_count = os.cpu_count() or 4
-    print(f"--- Iniciando Sistema de Analisis Concurrente ---")
-    print(f"--- Usando {cpu_worker_count} workers para CPU ---")
+    print(f"=================================================")
+    print(f"=== Iniciando Sistema de Analisis Concurrente ===")
+    print(f"=================================================")
+    print(f"{cpu_worker_count} workers para CPU")
     
     with multiprocessing.Manager() as manager:
         shared_results = manager.dict()
@@ -176,27 +178,27 @@ async def main():
                 for task in producer_tasks:
                     task.cancel()
                 
-                print("--- Esperando a que la cola de trabajo se procese...")
+                print("(Esperando a que la cola de trabajo se procese)")
                 await queue.join()
                 
-                print("--- Esperando a que la cola de alertas se procese...")
+                print("(Esperando a que la cola de alertas se procese)")
                 await alert_queue.join()
                 
-                print("--- Deteniendo Consumidores y Procesador de Alertas...")
+                print("(Deteniendo Consumidores y Procesador de Alertas)")
                 for task in consumer_tasks:
                     task.cancel()
                 alert_task.cancel()
                 
                 print("--- Simulacion finalizada. ---")
                 
-                print("\n--- RESULTADOS AGREGADOS (MUESTRA) ---")
+                print("\n=== RESULTADOS ===")
                 print(dict(list(shared_results.items())[:5]))
 
                 generate_report(metrics_log, alert_latencies)
 
 def generate_report(metrics_log: List[Dict[str, Any]], alert_latencies: List[float]):
     
-    print("\n\n--- [INFORME FINAL DE MÉTRICAS] ---")
+    print("\n\n=== INFORME FINAL DE MÉTRICAS ===")
     
     if not metrics_log:
         print("No se procesaron métricas. Terminando informe.")
