@@ -12,10 +12,17 @@ class BioquimicService(BaseDataService):
     async def fetch_data(self) -> Optional[Dict[str, Any]]:
         await asyncio.sleep(random.uniform(0.2, 0.8))
         
+        if random.random() < 0.3:
+            generated_value = round(random.uniform(14.1, 15.0), 3)
+            id_generated = f"ALERT-{random.randint(1000, 9999)}"
+        else:
+            generated_value = round(random.uniform(0.1, 14.0), 3)
+            id_generated = random.randint(1000, 9999)
+        
         raw_data = {
-            'sample_id': random.randint(1000, 9999),
+            'sample_id': id_generated,
             'comp': random.choice(['Glucosa', 'H2O', 'CO2']),
-            'val': round(random.uniform(0.1, 15.0), 3)
+            'val': generated_value
         }
 
         if random.random() < 0.05:

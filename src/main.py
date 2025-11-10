@@ -13,7 +13,12 @@ from services.BioService import BioquimicService
 from services.FisicService import FisicService
 from services.base_service import BaseDataService
 
-from processing.workers import analyze_genetic_data, save_io_data
+from processing.workers import (
+    analyze_genetic_data, 
+    analyze_biochem_data,
+    analyze_physical_data,
+    save_io_data
+)
 
 MAX_QUEUE_SIZE = 100
 SIMULATION_TIME_SECONDS = 30
@@ -21,6 +26,7 @@ SIMULATION_TIME_SECONDS = 30
 alert_queue = asyncio.Queue()
 metrics_log: List[Dict[str, Any]] = []
 alert_latencies: List[float] = []
+critical_alerts_log: List[Dict[str, Any]] = []
 
 async def producer(queue: asyncio.Queue, service: BaseDataService):
     while True:
@@ -32,9 +38,9 @@ async def producer(queue: asyncio.Queue, service: BaseDataService):
                 
                 is_critical = False
                 payload = data.get('payload', {})
-                if data['type'] == 'BIOQUIMIC' and payload.get('valor', 0) > 14.0:
+                if data['type'] == 'BIOQUIMIC' and payload.get('value', 0) > 14.0:
                     is_critical = True
-                elif data['type'] == 'FISIC' and payload.get('metrica') == 'temp' and payload.get('valor', 0) > 39.5:
+                elif data['type'] == 'FISIC' and payload.get('metrics') == 'temp' and payload.get('value', 0) > 38.5:
                     is_critical = True
                 
                 if is_critical:
@@ -56,74 +62,94 @@ async def alert_processor():
             
             print(f"[ALERTA PROCESADA] {alert_data['sample_id']}. Latencia: {detection_latency*1000:.2f} ms")
             
+            critical_alerts_log.append(alert_data)
             await asyncio.sleep(0.05)
             
             alert_queue.task_done()
         except Exception as e:
             print(f"Error en procesador de alertas: {e}")
 
-async def cpu_worker_wrapper(loop, cpu_pool, data, shared_results, queue: asyncio.Queue):
+def safe_write_to_results(shared_results: Dict, lock: multiprocessing.Lock, key: str, new_data: Dict):
+
+    with lock:
+        current_data = shared_results.get(key, {})
+        current_data.update(new_data)
+        shared_results[key] = current_data
+
+async def cpu_worker_wrapper(loop, cpu_pool, data, shared_results, lock, queue):
     start_time = time.time()
     status = 'FAILURE'
+    sample_id = data['sample_id']
     try:
-        await loop.run_in_executor(
+        analysis_result = await loop.run_in_executor(
             cpu_pool,
             analyze_genetic_data,
-            data,
-            shared_results
+            data
         )
+        
+        safe_write_to_results(shared_results, lock, sample_id, analysis_result)
         status = 'SUCCESS'
+        
     except Exception as e:
-        print(f"[ERROR-CPU-WORKER] Fallo en {data.get('sample_id', 'DATO DESCONOCIDO')}: {e}")
+        print(f"[ERROR-CPU-WORKER] Fallo en {sample_id}: {e}")
     finally:
         end_time = time.time()
         metrics_log.append({
-            'sample_id': data.get('sample_id', 'N/A'),
-            'type': data.get('type', 'N/A'),
-            'start_time': start_time,
-            'end_time': end_time,
-            'status': status
+            'sample_id': sample_id, 'type': 'GENETIC',
+            'start_time': start_time, 'end_time': end_time, 'status': status
         })
         queue.task_done()
 
-async def io_worker_wrapper(data, shared_results, queue: asyncio.Queue):
+async def io_worker_wrapper(data, shared_results, lock, queue):
     start_time = time.time()
     status = 'FAILURE'
+    sample_id = data['sample_id']
+    data_type = data['type']
+    
     try:
-        await save_io_data(data, shared_results)
+        if data_type == 'BIOQUIMIC':
+            analysis_result = await analyze_biochem_data(data)
+        elif data_type == 'FISIC':
+            analysis_result = await analyze_physical_data(data)
+        else:
+            analysis_result = {}
+
+        safe_write_to_results(shared_results, lock, sample_id, analysis_result)
+
+        save_result = await save_io_data(data)
+        
+        safe_write_to_results(shared_results, lock, sample_id, save_result)
+        
         status = 'SUCCESS'
+        
     except Exception as e:
-        print(f"[ERROR-I/O-WORKER] Fallo en {data.get('sample_id', 'DATO DESCONOCIDO')}: {e}")
+        print(f"[ERROR-I/O-WORKER] Fallo en {sample_id}: {e}")
     finally:
         end_time = time.time()
         metrics_log.append({
-            'sample_id': data.get('sample_id', 'N/A'),
-            'type': data.get('type', 'N/A'),
-            'start_time': start_time,
-            'end_time': end_time,
-            'status': status
+            'sample_id': sample_id, 'type': data_type,
+            'start_time': start_time, 'end_time': end_time, 'status': status
         })
         queue.task_done()
 
-async def consumer(queue: asyncio.Queue, cpu_pool: ProcessPoolExecutor, shared_results: Dict):
+async def consumer(queue: asyncio.Queue, cpu_pool: ProcessPoolExecutor, shared_results: Dict, lock: multiprocessing.Lock):
     loop = asyncio.get_running_loop()
     
     while True:
         try:
             data = await queue.get()
-            
             print(f"Consumidor --> Dato {data['sample_id']} recibido.")
 
             if data['type'] == 'GENETIC':
                 print(f"-> Delegando {data['sample_id']} al Pool de CPU")
                 asyncio.create_task(
-                    cpu_worker_wrapper(loop, cpu_pool, data, shared_results, queue)
+                    cpu_worker_wrapper(loop, cpu_pool, data, shared_results, lock, queue)
                 )
                 
             elif data['type'] in ['BIOQUIMIC', 'FISIC']:
                 print(f"-> Creando tarea I/O para {data['sample_id']}")
                 asyncio.create_task(
-                    io_worker_wrapper(data, shared_results, queue)
+                    io_worker_wrapper(data, shared_results, lock, queue)
                 )
                 
             else:
@@ -131,7 +157,7 @@ async def consumer(queue: asyncio.Queue, cpu_pool: ProcessPoolExecutor, shared_r
                 queue.task_done()
 
         except (AttributeError, KeyError) as e:
-            print(f"[ERROR-CONSUMIDOR] Dato malformado, no se puede procesar: {data}. Error: {e}")
+            print(f"[ERROR-CONSUMIDOR] Dato malformado: {data}. Error: {e}")
             queue.task_done()
         except Exception as e:
             print(f"[ERROR-CONSUMIDOR] Error inesperado: {e}")
@@ -149,6 +175,7 @@ async def main():
     
     with multiprocessing.Manager() as manager:
         shared_results = manager.dict()
+        lock = manager.Lock()
         
         with ProcessPoolExecutor(max_workers=cpu_worker_count) as cpu_pool:
             
@@ -163,7 +190,7 @@ async def main():
             ]
             
             consumer_tasks = [
-                asyncio.create_task(consumer(queue, cpu_pool, shared_results)) for _ in range(3)
+                asyncio.create_task(consumer(queue, cpu_pool, shared_results, lock)) for _ in range(3)
             ]
 
             alert_task = asyncio.create_task(alert_processor())
@@ -194,9 +221,9 @@ async def main():
                 print("\n=== RESULTADOS ===")
                 print(dict(list(shared_results.items())[:5]))
 
-                generate_report(metrics_log, alert_latencies)
+                generate_report(metrics_log, alert_latencies, critical_alerts_log)
 
-def generate_report(metrics_log: List[Dict[str, Any]], alert_latencies: List[float]):
+def generate_report(metrics_log: List[Dict[str, Any]], alert_latencies: List[float], critical_alerts: List[Dict[str, Any]]):
     
     print("\n\n=== INFORME FINAL DE MÉTRICAS ===")
     
@@ -215,15 +242,29 @@ def generate_report(metrics_log: List[Dict[str, Any]], alert_latencies: List[flo
     print("\n1. Tiempo de respuesta medio (ms) por tipo:")
     avg_times = df.groupby('type')['latency_ms'].mean()
     print(avg_times.to_string())
+    
+    print("\n2. Log de Alertas Críticas Procesadas:")
+    if critical_alerts:
+        print(f"Se procesaron un total de {len(critical_alerts)} alertas críticas:")
+        try:
+            alert_df = pd.DataFrame(critical_alerts)
+            alert_df['payload_data'] = alert_df['payload'].astype(str)
+            print(alert_df[['sample_id', 'type', 'timestamp', 'payload_data']].to_string())
+        except Exception as e:
+            print(f"No se pudo formatear el log de alertas (imprimiendo lista cruda): {e}")
+            for alert in critical_alerts:
+                print(alert)
+    else:
+        print("No se procesó ninguna alerta crítica durante la simulación.")
 
-    print("\n2. Latencia a la detección y envío de alertas (ms):")
+    print("\n3. Latencia a la detección y envío de alertas (ms):")
     if alert_latencies:
         avg_alert_latency = (sum(alert_latencies) / len(alert_latencies)) * 1000
         print(f"Latencia media de alertas: {avg_alert_latency:.2f} ms")
     else:
-        print("No se generaron alertas.")
+        print("No se genero latencia entre alertas.")
 
-    print("\n3. Tasa de errores / fallos:")
+    print("\n4. Tasa de errores / fallos:")
     total_ops = len(metrics_log)
     total_errors = total_ops - len(df)
     error_rate_per_million = (total_errors / total_ops) * 1_000_000 if total_ops > 0 else 0
@@ -231,7 +272,7 @@ def generate_report(metrics_log: List[Dict[str, Any]], alert_latencies: List[flo
     print(f"Fallos totales: {total_errors}")
     print(f"Tasa de fallos por millón de operaciones: {error_rate_per_million:.2f}")
 
-    print("\n4. [Visual] Tabla de eventos procesados por tipo:")
+    print("\n5. [Visual] Tabla de eventos procesados por tipo:")
     summary_table = df.groupby('type').agg(
         total_procesados=('sample_id', 'count'),
         latencia_media_ms=('latency_ms', 'mean')
@@ -239,7 +280,7 @@ def generate_report(metrics_log: List[Dict[str, Any]], alert_latencies: List[flo
     print(summary_table.to_string())
 
     try:
-        print("\n5. [Visual] Generando gráfico 'rendimiento_latencia.png'...")
+        print("\n6. [Visual] Generando gráfico 'rendimiento_latencia.png'...")
         df_sorted = df.sort_values('end_time')
         df_sorted['tiempo_relativo'] = df_sorted['end_time'] - df_sorted['end_time'].min()
         
